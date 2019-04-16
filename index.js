@@ -28,8 +28,10 @@
                     continuation(error);
                 } else if(testResult) {
                     currentBehavior.then(continuation);
-                } else {
+                } else if(behaviors.length > 1) {
                     testAndCallCurrentBehavior(behaviors.slice(1));
+                } else {
+                    continuation();
                 }
             });
         }
