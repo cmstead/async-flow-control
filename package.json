@@ -1,6 +1,6 @@
 {
   "name": "async-flow-control",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Handle Javascript program flow control gracefully in async and mixed async/sync workflows",
   "main": "index.js",
   "scripts": {
