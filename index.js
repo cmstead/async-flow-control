@@ -24,7 +24,9 @@
 
             currentBehavior.if(function(error, testResult) {
 
-                if(testResult) {
+                if(error) {
+                    continuation(error);
+                } else if(testResult) {
                     currentBehavior.then(continuation);
                 } else {
                     testAndCallCurrentBehavior(behaviors.slice(1));
@@ -104,10 +106,29 @@
 
             return this;
         },
+        runAllCallItems: function (continuation) {
+            function processNextCallItem(callSequence) {
+                const currentCallItem = callSequence[0];
+
+                processConditional(currentCallItem, function (error) {
+                    if(error) {
+                        continuation(error);
+                    } else if(callSequence.length > 1) {
+                        processNextCallItem(callSequence.slice(1));
+                    } else {
+                        continuation();
+                    }
+                });
+            }
+            
+            processNextCallItem(this.callSequence);
+
+        },
         exec: function (resolver) {
             this.addResolver(resolver);
-            processConditional(this.callSequence[0], function() {
-                this.resolvers[0]();
+
+            this.runAllCallItems(function(error) {
+                this.resolvers[0](error);
             }.bind(this));
         },
         addResolver: function (action) {
