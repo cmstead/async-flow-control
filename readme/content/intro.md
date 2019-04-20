@@ -1,5 +1,8 @@
-# Async Flow Control #
-
+<!--bl
+(filemeta
+    (title "Indtroduction")
+)
+/bl-->
 Manage complex async flow control problems with ease. Promises and callbacks, async/await with try/catch blocks -- these lead to a substantial amount of noise in the code when the flow control structure gets complex. Conditional execution, looping and the like introduce significant overhead you must keep in mind while you work.
 
 There can be a better way.
@@ -23,5 +26,3 @@ asyncFlowControl
     
     .exec();
 ```
-
-## Setup ##

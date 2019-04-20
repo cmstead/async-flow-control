@@ -2,27 +2,7 @@ const { assert } = require('chai');
 const sinon = require('sinon');
 const asyncFlowControl = require('../index');
 
-function lastIndexOf(values) {
-    return values.length - 1;
-}
-
-function last(values) {
-    const lastIndex = lastIndexOf(values);
-
-    return values[lastIndex];
-}
-
-function asyncify(fn) {
-    return function (...args) {
-        const continuation = last(args);
-        const otherArgs = args.slice(0, lastIndexOf(args));
-
-        setTimeout(function () {
-            const result = fn.apply(null, otherArgs);
-            continuation(null, result);
-        });
-    };
-}
+const asyncify = asyncFlowControl.asyncify;
 
 function promisify(fn) {
     return function (...args) {
@@ -163,6 +143,38 @@ describe("conditionals", function () {
 
     });
 
+    describe("ifSync", function () {
+        it("resolves a synchronous check and calls through to then", function (done) {
+            const thenStub = sinon.stub();
+
+            asyncFlowControl
+                .ifSync(() => true)
+                .then(asyncify(thenStub))
+
+                .exec(function () {
+                    assert.equal(thenStub.callCount, 1, 'ThenStub was called an incorrect number of times');
+                    done();
+                });
+
+        });
+    });
+
+    describe("thenSync", function () {
+        it("resolves a synchronous then and calls through to then", function (done) {
+            const thenStub = sinon.stub();
+
+            asyncFlowControl
+                .ifSync(() => true)
+                .thenSync(thenStub)
+
+                .exec(function () {
+                    assert.equal(thenStub.callCount, 1, 'ThenStub was called an incorrect number of times');
+                    done();
+                });
+
+        });
+    });
+
     describe("else", function () {
         it("executes 'then' action provided below it", function (done) {
             const thenStub = sinon.stub();
@@ -173,6 +185,25 @@ describe("conditionals", function () {
                 .then(asyncify(thenStub))
 
                 .else(asyncify(elseStub))
+
+                .exec(function () {
+                    assert.equal(thenStub.callCount, 0, 'ThenStub was called but shouldn\'t have been');
+                    assert.equal(elseStub.callCount, 1, 'Else was called an incorrect number of times');
+                    done();
+                });
+        });
+    });
+
+    describe("elseSync", function () {
+        it("executes 'then' action provided below it", function (done) {
+            const thenStub = sinon.stub();
+            const elseStub = sinon.stub();
+
+            asyncFlowControl
+                .if(asyncify(() => false))
+                .then(asyncify(thenStub))
+
+                .elseSync(elseStub)
 
                 .exec(function () {
                     assert.equal(thenStub.callCount, 0, 'ThenStub was called but shouldn\'t have been');
@@ -206,7 +237,43 @@ describe("conditionals", function () {
         });
     });
 
+    describe("elseIfSync", function () {
+        it("executes 'then' action provided below it", function (done) {
+            const ifStub = sinon.stub();
+            const elseIfStub = sinon.stub();
+            const elseStub = sinon.stub();
+
+            asyncFlowControl
+                .if(asyncify(() => false))
+                .then(asyncify(ifStub))
+
+                .elseIfSync(() => true)
+                .then(asyncify(elseIfStub))
+
+                .else(asyncify(elseStub))
+
+                .exec(function () {
+                    assert.equal(ifStub.callCount, 0, 'ThenStub was called but shouldn\'t have been');
+                    assert.equal(elseStub.callCount, 0, 'Else was called but should not have been');
+                    assert.equal(elseIfStub.callCount, 1, 'ElseIf was called an incorrect number of times');
+                    done();
+                });
+        });
+    });
+
     describe("exec", function () {
+        it("catches a thrown error and provides it out to the resolver", function (done) {
+
+            asyncFlowControl
+                .if(() => { throw new Error('Execution error'); })
+                .exec()
+                .then(() => null)
+                .catch(function (error) {
+                    assert.equal(error.message, 'Execution error');
+                    done()
+                });
+        });
+
         it("returns a promise and resolves when no callback is provided", function (done) {
             const behaviorPromise = asyncFlowControl.if(asyncify(() => false)).exec();
 
@@ -226,6 +293,18 @@ describe("conditionals", function () {
                 .then(function () { })
                 .catch(function (error) {
                     assert.equal(error.message, 'Oh noes!!', 'Error was not provided correctly');
+                    done();
+                });
+        });
+
+        it("returns collected values when if resolves to true", function(done){
+            asyncFlowControl
+                .ifSync(() => true)
+                .thenSync(() => 'If condition met')
+                .exec(function(error, resultSet) {
+                    assert.equal(resultSet.length, 1);
+                    assert.equal(resultSet[0], 'If condition met');
+
                     done();
                 });
         });

@@ -18,7 +18,7 @@
     }
 
     function promiseHandler(promiseToHandle, callback) {
-        if(typeof promiseToHandle === 'object') {
+        if (typeof promiseToHandle === 'object') {
             promiseToHandle
                 .then((...args) => callback.apply(null, [null].concat(args)))
                 .catch((error) => callback(error, null));
@@ -32,7 +32,7 @@
 
             function ifResolver(error, testResult) {
                 if (error) {
-                    continuation(error);
+                    continuation(error, null);
                 } else if (testResult) {
                     const thenPromise = currentBehavior.then(continuation);
                     promiseHandler(thenPromise, continuation);
@@ -43,8 +43,12 @@
                 }
             }
 
-            const ifPromise = currentBehavior.if(ifResolver);
-            promiseHandler(ifPromise, ifResolver);
+            try {
+                const ifPromise = currentBehavior.if(ifResolver);
+                promiseHandler(ifPromise, ifResolver);
+            } catch (error) {
+                continuation(error);
+            }
         }
 
         testAndCallCurrentBehavior(conditionalItem.behaviors);
@@ -62,8 +66,11 @@
     function AsyncFlowControl(options) {
         this.callSequence = [];
         this.resolvers = [];
+        this.resultSet = [];
 
-        if (typeof options.if === 'function') {
+        const hasOptions = typeof options === 'object';
+
+        if (hasOptions && typeof options.if === 'function') {
             this.if(options.if);
         }
     }
@@ -84,39 +91,39 @@
         if: function (asyncPredicate) {
             this.callSequence.push({
                 type: 'conditional',
-                behaviors: [
-                    {
-                        type: 'if',
-                        if: asyncPredicate,
-                        then: null
-                    }
-                ]
-            })
-            return this;
+                behaviors: []
+            });
+
+            return this.elseIf(asyncPredicate);
+        },
+        ifSync: function (predicate) {
+            return this.if(asyncify(predicate));
         },
         else: function (asyncFunction) {
             const currentCallItem = last(this.callSequence);
 
             currentCallItem.behaviors.push({
-                type: 'else',
                 if: asyncify(() => true),
                 then: asyncFunction
             });
 
             return this;
         },
+        elseSync: function (action) {
+            return this.else(asyncify(action));
+        },
         elseIf: function (asyncPredicate) {
             const currentCallItem = last(this.callSequence);
 
-            currentCallItem.behaviors.push(
-                {
-                    type: 'if',
-                    if: asyncPredicate,
-                    then: null
-                }
-            )
+            currentCallItem.behaviors.push({
+                if: asyncPredicate,
+                then: null
+            });
 
             return this;
+        },
+        elseIfSync: function (predicate) {
+            return this.elseIf(asyncify(predicate));
         },
         then: function (asyncFunction) {
             const currentCallItem = last(this.callSequence);
@@ -126,11 +133,17 @@
 
             return this;
         },
+        thenSync: function (action) {
+            return this.then(asyncify(action));
+        },
         runAllCallItems: function (continuation) {
             function processNextCallItem(callSequence) {
                 const currentCallItem = callSequence[0];
 
-                function postProcessContinuation(error) {
+                function postProcessContinuation(error, result) {
+                    if(typeof result !== 'undefined') {
+                        this.resultSet.push(result);
+                    }
                     if (error) {
                         continuation(error);
                     } else if (callSequence.length > 1) {
@@ -140,10 +153,10 @@
                     }
                 }
 
-                processConditional(currentCallItem, postProcessContinuation);
+                processConditional(currentCallItem, postProcessContinuation.bind(this));
             }
 
-            processNextCallItem(this.callSequence);
+            processNextCallItem.call(this, this.callSequence);
 
         },
         exec: function (resolver) {
@@ -155,10 +168,10 @@
                 returnablePromise = getAndRegisterNewExecPromise(this);
             }
 
-            this.runAllCallItems(function (error){
-                this.resolvers.forEach(function (resolver){
-                    resolver(error);
-                })
+            this.runAllCallItems(function (error) {
+                this.resolvers.forEach(function (resolver) {
+                    resolver(error, this.resultSet);
+                }.bind(this))
             }.bind(this));
 
             return returnablePromise;
@@ -172,8 +185,18 @@
         return new AsyncFlowControl({ if: asyncPredicate });
     }
 
+    function ifSync(predicate) {
+        return ifAsync(asyncify(predicate));
+    }
+
+    function newInstance() {
+        return new AsyncFlowControl();
+    }
+
     return {
         asyncify: asyncify,
-        if: ifAsync
+        if: ifAsync,
+        ifSync: ifSync,
+        new: newInstance
     };
 });
