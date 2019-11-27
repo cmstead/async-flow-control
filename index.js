@@ -58,7 +58,7 @@
     function asyncify(fn) {
         return function (...args) {
             const continuation = args.pop();
-            
+
             try {
                 const result = fn(...args);
                 continuation(null, result);
@@ -77,6 +77,8 @@
 
         if (hasOptions && typeof options.if === 'function') {
             this.if(options.if);
+        } else if (hasOptions && Boolean(options.chain)) {
+            this.chain(options.chain);
         }
     }
 
@@ -115,16 +117,40 @@
     }
 
     AsyncFlowControl.prototype = {
-        compose: function () {
-            this.if(asyncify(() => true));
+        attachBehavior: function ({
+            predicate = asyncify(() => true),
+            action = defaultAction
+        }) {
+            const currentCallItem = last(this.callSequence);
+
+            currentCallItem.behaviors.push({
+                if: predicate,
+                then: action
+            });
+
+            return this;
+
         },
-        if: function (asyncPredicate) {
+        chain: function (...initialValues) {
             this.callSequence.push({
-                type: 'conditional',
                 behaviors: []
             });
 
-            return this.elseIf(asyncPredicate);
+            const initialAction = (callback) =>
+                callback(...([null].concat(initialValues)));
+
+            return this.attachBehavior({
+                action: initialAction
+            })
+        },
+        if: function (asyncPredicate) {
+            this.callSequence.push({
+                behaviors: []
+            });
+
+            return this.attachBehavior({
+                predicate: asyncPredicate
+            });
         },
 
         ifSync: function (predicate) {
@@ -132,14 +158,10 @@
         },
 
         else: function (asyncFunction) {
-            const currentCallItem = last(this.callSequence);
-
-            currentCallItem.behaviors.push({
-                if: asyncify(() => true),
-                then: asyncFunction
+            return this.attachBehavior({
+                predicate: asyncify(() => true),
+                action: asyncFunction
             });
-
-            return this;
         },
 
         elseSync: function (action) {
@@ -147,14 +169,10 @@
         },
 
         elseIf: function (asyncPredicate) {
-            const currentCallItem = last(this.callSequence);
-
-            currentCallItem.behaviors.push({
-                if: asyncPredicate,
-                then: defaultAction
+            return this.attachBehavior({
+                predicate: asyncPredicate,
+                action: defaultAction
             });
-
-            return this;
         },
 
         elseIfSync: function (predicate) {
@@ -231,6 +249,14 @@
         return new AsyncFlowControl({ if: asyncPredicate });
     }
 
+    function chain (...args) {
+        const flowControlInstance = new AsyncFlowControl();
+
+        flowControlInstance.chain(...args);
+
+        return flowControlInstance;
+    }
+
     function ifSync(predicate) {
         return ifAsync(asyncify(predicate));
     }
@@ -241,6 +267,7 @@
 
     return {
         asyncify: asyncify,
+        chain: chain,
         if: ifAsync,
         ifSync: ifSync,
         new: newInstance

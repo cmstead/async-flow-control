@@ -11,17 +11,12 @@ const asyncFlowControl = require('async-flow-control');
 
 asyncFlowControl
     .if(isRemoteFeatureEnabled)
-    .then(runRemoteFeature)
-    .thenSync(transformReturnedData)
-    .then(getMoreData)
+    .then(promiseReturning)
 
     .elseIf(isCacheable)
     .then(cacheRemoteCall)
 
-    .elseIfSync(isLocallyRunnable)
-    .then(getRemoteCommandValues)
-
-    .elseSync(getLocalNoopCommand)
+    .elseSync(fallbackBehavior)
     
     .exec()
     
