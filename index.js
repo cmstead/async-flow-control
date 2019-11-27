@@ -18,7 +18,8 @@
     }
 
     function promiseHandler(promiseToHandle, callback) {
-        if (typeof promiseToHandle === 'object') {
+        if (typeof promiseToHandle === 'object'
+            && typeof promiseToHandle.then === 'function') {
             promiseToHandle
                 .then((...args) => callback.apply(null, [null].concat(args)))
                 .catch((error) => callback(error, null));
@@ -56,10 +57,14 @@
 
     function asyncify(fn) {
         return function (...args) {
-            const continuation = last(args);
-            const result = fn.apply(null, args);
-
-            continuation(null, result);
+            const continuation = args.pop();
+            
+            try {
+                const result = fn(...args);
+                continuation(null, result);
+            } catch (error) {
+                continuation(error);
+            }
         }
     }
 
@@ -72,6 +77,28 @@
 
         if (hasOptions && typeof options.if === 'function') {
             this.if(options.if);
+        }
+    }
+
+    function defaultAction(callback) {
+        callback(null);
+    }
+
+    function asyncCompose(original, newAsync) {
+        return function (...args) {
+            const callback = args.pop();
+
+            function callNext(error, ...nextArgs) {
+                if (error) {
+                    callback(error);
+                } else {
+                    const maybePromise = newAsync(...(nextArgs.concat(callback)));
+                    promiseHandler(maybePromise, callback);
+                }
+            }
+
+            const maybePromise = original(...(args.concat(callNext)));
+            promiseHandler(maybePromise, callNext);
         }
     }
 
@@ -88,6 +115,9 @@
     }
 
     AsyncFlowControl.prototype = {
+        compose: function () {
+            this.if(asyncify(() => true));
+        },
         if: function (asyncPredicate) {
             this.callSequence.push({
                 type: 'conditional',
@@ -96,9 +126,11 @@
 
             return this.elseIf(asyncPredicate);
         },
+
         ifSync: function (predicate) {
             return this.if(asyncify(predicate));
         },
+
         else: function (asyncFunction) {
             const currentCallItem = last(this.callSequence);
 
@@ -109,39 +141,49 @@
 
             return this;
         },
+
         elseSync: function (action) {
             return this.else(asyncify(action));
         },
+
         elseIf: function (asyncPredicate) {
             const currentCallItem = last(this.callSequence);
 
             currentCallItem.behaviors.push({
                 if: asyncPredicate,
-                then: null
+                then: defaultAction
             });
 
             return this;
         },
+
         elseIfSync: function (predicate) {
             return this.elseIf(asyncify(predicate));
         },
+
         then: function (asyncFunction) {
             const currentCallItem = last(this.callSequence);
             const currentBehaviorItem = last(currentCallItem.behaviors);
 
-            currentBehaviorItem.then = asyncFunction;
+            const originalThen = currentBehaviorItem.then;
+            currentBehaviorItem.then = asyncCompose(
+                originalThen,
+                asyncFunction
+            );
 
             return this;
         },
+
         thenSync: function (action) {
             return this.then(asyncify(action));
         },
+
         runAllCallItems: function (continuation) {
             function processNextCallItem(callSequence) {
                 const currentCallItem = callSequence[0];
 
                 function postProcessContinuation(error, result) {
-                    if(typeof result !== 'undefined') {
+                    if (typeof result !== 'undefined') {
                         this.resultSet.push(result);
                     }
                     if (error) {
@@ -159,6 +201,7 @@
             processNextCallItem.call(this, this.callSequence);
 
         },
+
         exec: function (resolver) {
             let returnablePromise;
 
@@ -168,14 +211,17 @@
                 returnablePromise = getAndRegisterNewExecPromise(this);
             }
 
-            this.runAllCallItems(function (error) {
-                this.resolvers.forEach(function (resolver) {
-                    resolver(error, this.resultSet);
-                }.bind(this))
-            }.bind(this));
+            this.runAllCallItems(
+                (error) =>
+                    this.resolvers.forEach(
+                        (resolver) =>
+                            resolver(error, this.resultSet)
+                    )
+            );
 
             return returnablePromise;
         },
+
         addResolver: function (action) {
             this.resolvers.push(action);
         }

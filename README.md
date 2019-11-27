@@ -12,6 +12,8 @@ const asyncFlowControl = require('async-flow-control');
 asyncFlowControl
     .if(isRemoteFeatureEnabled)
     .then(runRemoteFeature)
+    .thenSync(transformReturnedData)
+    .then(getMoreData)
 
     .elseIf(isCacheable)
     .then(cacheRemoteCall)
@@ -21,7 +23,14 @@ asyncFlowControl
 
     .elseSync(getLocalNoopCommand)
     
-    .exec();
+    .exec()
+    
+    .then(continueExecution)
+    .catch(executeErrorBehavior);
 ```
 
 ## Setup ##
+
+To install Async Flow Control, make sure you have a current version of NodeJS installed and run the following command in your project:
+
+`npm i async-flow-control`

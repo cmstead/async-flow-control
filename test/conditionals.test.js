@@ -1,8 +1,8 @@
 const { assert } = require('chai');
 const sinon = require('sinon');
-const asyncFlowControl = require('../index');
 
-const asyncify = asyncFlowControl.asyncify;
+const asyncFlowControl = require('../index');
+const { asyncify } = asyncFlowControl;
 
 function promisify(fn) {
     return function (...args) {
@@ -306,6 +306,22 @@ describe("conditionals", function () {
                     assert.equal(resultSet[0], 'If condition met');
 
                     done();
+                });
+        });
+
+        it('allows multiple then calls from if', function () {
+            const thenBehavior1 = asyncify(() => 5);
+            const thenBehavior2 = asyncify(value => value + 3);
+
+            return asyncFlowControl
+                .ifSync(() => true)
+                .then(thenBehavior1)
+                .then(thenBehavior2)
+                .thenSync(value => value / 2)
+
+                .exec()
+                .then(function (resultSet) {
+                    assert.equal(resultSet, 4);
                 });
         });
     });
