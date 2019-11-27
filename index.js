@@ -55,6 +55,34 @@
         testAndCallCurrentBehavior(conditionalItem.behaviors);
     }
 
+    function processLoop(loopItem, continuation) {
+        function testAndCallCurrentBehavior(behaviors) {
+            const currentBehavior = behaviors[0];
+
+            function loopResolver(error, testResult) {
+                if (error) {
+                    continuation(error, null);
+                } else if (testResult) {
+                    const repeatAction = () => testAndCallCurrentBehavior(behaviors);
+                    const thenPromise = currentBehavior.then(repeatAction);
+
+                    promiseHandler(thenPromise, repeatAction);
+                } else {
+                    continuation();
+                }
+            }
+
+            try {
+                const loopPromise = currentBehavior.if(loopResolver);
+                promiseHandler(loopPromise, loopResolver);
+            } catch (error) {
+                continuation(error);
+            }
+        }
+
+        testAndCallCurrentBehavior(loopItem.behaviors);
+    }
+
     function asyncify(fn) {
         return function (...args) {
             const continuation = args.pop();
@@ -67,25 +95,6 @@
             }
         }
     }
-
-    function AsyncFlowControl(options) {
-        this.callSequence = [];
-        this.resolvers = [];
-        this.resultSet = [];
-
-        const hasOptions = typeof options === 'object';
-
-        if (hasOptions && typeof options.if === 'function') {
-            this.if(options.if);
-        } else if (hasOptions && Boolean(options.chain)) {
-            this.chain(options.chain);
-        }
-    }
-
-    function defaultAction(callback) {
-        callback(null);
-    }
-
     function asyncCompose(original, newAsync) {
         return function (...args) {
             const callback = args.pop();
@@ -116,6 +125,16 @@
         });
     }
 
+    function defaultAction(callback) {
+        callback(null);
+    }
+
+    function AsyncFlowControl() {
+        this.callSequence = [];
+        this.resolvers = [];
+        this.resultSet = [];
+    }
+
     AsyncFlowControl.prototype = {
         attachBehavior: function ({
             predicate = asyncify(() => true),
@@ -131,26 +150,36 @@
             return this;
 
         },
-        chain: function (...initialValues) {
+        addSequence: function (type) {
             this.callSequence.push({
+                type: type,
                 behaviors: []
             });
-
+            return this;
+        },
+        chain: function (...initialValues) {
             const initialAction = (callback) =>
                 callback(...([null].concat(initialValues)));
 
-            return this.attachBehavior({
-                action: initialAction
-            })
+            return this
+                .addSequence('chain')
+                .attachBehavior({
+                    action: initialAction
+                })
+        },
+        while: function (asyncPredicate) {
+            return this
+                .addSequence('loop')
+                .attachBehavior({
+                    predicate: asyncPredicate
+                });
         },
         if: function (asyncPredicate) {
-            this.callSequence.push({
-                behaviors: []
-            });
-
-            return this.attachBehavior({
-                predicate: asyncPredicate
-            });
+            return this
+                .addSequence('condition')
+                .attachBehavior({
+                    predicate: asyncPredicate
+                });
         },
 
         ifSync: function (predicate) {
@@ -207,13 +236,17 @@
                     if (error) {
                         continuation(error);
                     } else if (callSequence.length > 1) {
-                        processNextCallItem(callSequence.slice(1));
+                        processNextCallItem.call(this, callSequence.slice(1));
                     } else {
                         continuation();
                     }
                 }
 
-                processConditional(currentCallItem, postProcessContinuation.bind(this));
+                if(currentCallItem.type !== 'loop'){
+                    processConditional(currentCallItem, postProcessContinuation.bind(this));
+                } else {
+                    processLoop(currentCallItem, postProcessContinuation.bind(this));
+                }
             }
 
             processNextCallItem.call(this, this.callSequence);
@@ -246,19 +279,25 @@
     }
 
     function ifAsync(asyncPredicate) {
-        return new AsyncFlowControl({ if: asyncPredicate });
-    }
-
-    function chain (...args) {
         const flowControlInstance = new AsyncFlowControl();
 
-        flowControlInstance.chain(...args);
+        return flowControlInstance.if(asyncPredicate);
+    }
 
-        return flowControlInstance;
+    function chain(...args) {
+        const flowControlInstance = new AsyncFlowControl();
+
+        return flowControlInstance.chain(...args);
     }
 
     function ifSync(predicate) {
         return ifAsync(asyncify(predicate));
+    }
+
+    function doWhile(predicate) {
+        const flowControlInstance = new AsyncFlowControl();
+
+        return flowControlInstance.while(predicate);
     }
 
     function newInstance() {
@@ -270,6 +309,7 @@
         chain: chain,
         if: ifAsync,
         ifSync: ifSync,
-        new: newInstance
+        new: newInstance,
+        while: doWhile
     };
 });
