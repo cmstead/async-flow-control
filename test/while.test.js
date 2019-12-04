@@ -20,6 +20,19 @@ describe("Async Looping", function(){
             assert.equal(count, 3);
         });
 
+        it("supports sync while checking (whileSync)", function(){
+            let count = 0;
+            const checkCount = () => count < 3;
+            const countUpdate = () => count ++;
+
+            asyncFlowControl
+                .whileSync(checkCount)
+                .thenSync(countUpdate)
+
+                .exec();
+            assert.equal(count, 3);
+        });
+
     });
 
 });

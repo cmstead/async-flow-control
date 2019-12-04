@@ -174,6 +174,9 @@
                     predicate: asyncPredicate
                 });
         },
+        whileSync: function (predicate) {
+            return this.while(asyncify(predicate));
+        },
         if: function (asyncPredicate) {
             return this
                 .addSequence('condition')
@@ -300,6 +303,12 @@
         return flowControlInstance.while(predicate);
     }
 
+    function doWhileSync(predicate) {
+        const flowControlInstance = new AsyncFlowControl();
+
+        return flowControlInstance.whileSync(predicate);
+    }
+
     function newInstance() {
         return new AsyncFlowControl();
     }
@@ -310,6 +319,7 @@
         if: ifAsync,
         ifSync: ifSync,
         new: newInstance,
-        while: doWhile
+        while: doWhile,
+        whileSync: doWhileSync
     };
 });

@@ -4,7 +4,9 @@ Manage complex async flow control problems with ease. Promises and callbacks, as
 
 There can be a better way.
 
-Although Async Flow Control is simply a conditional library at the moment, it already packs a lot in. It is possible to easily combine mixed APIs using promises, callbacks and synchronous calls under a unified interface.  Have a look at the following example:
+Async Flow Control (AFC) is a flow control system for handling conditional behaviors in async code. AFC handles callbacks and synchronous calls under a unified interface, without modification or wrappers.
+
+Writing conditional logic in async code can be done in the same number of lines as handling promise resolution:
 
 ```javascript
 const asyncFlowControl = require('async-flow-control');
